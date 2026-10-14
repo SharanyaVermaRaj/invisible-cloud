@@ -132,17 +132,17 @@ class CompanyGraph:
     def approval_needed(self, person: str, doc: str) -> dict | None:
         """If sending this document needs someone's approval, say whose and why."""
         kind, amount = self.doc_kind(doc), self.doc_amount(doc)
-        if amount is None:
-            return None
         roles = self.roles_of(person)
         for key, rule in self.rules.items():
-            if not (isinstance(rule, ApprovalRule) and rule.doc_kind == kind and amount > rule.min_amount):
+            # A document with no amount can't prove it's under the threshold, so it needs approval.
+            if not (isinstance(rule, ApprovalRule) and rule.doc_kind == kind
+                    and (amount is None or amount > rule.min_amount)):
                 continue
             if rule.approver_role in roles:
                 continue
             exempt = any(
                 isinstance(e, ExemptionRule) and e.role in roles and e.doc_kind == kind
-                and amount <= e.max_amount
+                and amount is not None and amount <= e.max_amount
                 for e in self.rules.values()
             )
             if not exempt:

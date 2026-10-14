@@ -8,12 +8,12 @@ from datetime import timedelta
 from pathlib import Path
 
 from itsdangerous import BadSignature, URLSafeSerializer
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.changes import apply_proposal, delete_org_rows
 from app.config import settings
-from app.models import FileBlob, Organization, utcnow
+from app.models import AiCall, FileBlob, Organization, utcnow
 from app.seed import DEMO_FIRM, FIRM_NAME
 
 COOKIE = "ic_workspace"
@@ -62,5 +62,6 @@ def cleanup_expired(session: Session, limit: int = 25) -> int:
     old = session.scalars(select(Organization.id).where(Organization.created_at < cutoff).limit(limit)).all()
     for org_id in old:
         delete_org_rows(session, org_id)
+    session.execute(delete(AiCall).where(AiCall.created_at < utcnow() - timedelta(days=2)))
     session.commit()
     return len(old)

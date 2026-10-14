@@ -2,6 +2,12 @@
 import os
 import secrets
 
+try:  # local development: read .env if python-dotenv is installed (it isn't needed in production)
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 
 def _bool(name: str, default: bool) -> bool:
     value = os.getenv(name)

@@ -36,7 +36,7 @@ RELATIONS: dict[str, tuple[set[str], set[str]]] = {
 
 class DocumentData(BaseModel):
     kind: DocKind = "other"
-    amount: float | None = Field(default=None, ge=0)
+    amount: float | None = Field(default=None, ge=0, le=1_000_000_000, allow_inf_nan=False)
     filename: str | None = None
     mime: str | None = None
     size: int | None = None
@@ -69,7 +69,7 @@ class ApprovalRule(BaseModel):
     """'<doc kind> over <min_amount> need <approver_role> approval before they're sent.'"""
     type: Literal["approval"] = "approval"
     doc_kind: DocKind
-    min_amount: float = Field(ge=0)
+    min_amount: float = Field(ge=0, le=1_000_000_000, allow_inf_nan=False)
     approver_role: Key
 
 
@@ -78,7 +78,7 @@ class ExemptionRule(BaseModel):
     type: Literal["exemption"] = "exemption"
     role: Key
     doc_kind: DocKind
-    max_amount: float = Field(ge=0)
+    max_amount: float = Field(ge=0, le=1_000_000_000, allow_inf_nan=False)
 
 
 RuleDefinition = Annotated[
@@ -137,11 +137,14 @@ class SetRule(BaseModel):
     key: Key
     text: str = Field(min_length=1, max_length=1000)
     definition: RuleDefinition
+    # Used by undo: only apply if the rule is still at this version (0 = must not exist).
+    if_version: int | None = Field(default=None, ge=0)
 
 
 class RemoveRule(BaseModel):
     op: Literal["remove_rule"] = "remove_rule"
     key: Key
+    if_version: int | None = Field(default=None, ge=0)
 
 
 Operation = Annotated[

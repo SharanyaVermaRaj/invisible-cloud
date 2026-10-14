@@ -122,7 +122,7 @@ function DocRow({ d, busy, onSend }: { d: DocumentItem; busy: boolean; onSend: (
         )}
         {canSend && delivery?.status !== "pending" && (
           <button className="btn btn-sm" onClick={onSend} disabled={busy} title={d.approval?.reason}>
-            <Icon name="send" className="" />{d.approval ? "Send for approval" : "Send to client"}
+            <Icon name="send" className="" />{d.approval ? "Send for approval" : delivery?.status === "sent" ? "Send again" : "Send to client"}
           </button>
         )}
       </div>

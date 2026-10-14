@@ -125,8 +125,8 @@ export function Landing() {
               <h4><Icon name="warn" />This clashes with an existing rule</h4>
               <p>Your firm requires partner approval for tax returns over $5,000. This rule would skip it between $5,000 and $10,000.</p>
               <div className="options">
-                <div className="option"><h5>Keep the existing rule</h5><ul><li>Accountants can send tax returns up to $5,000 without approval.</li></ul></div>
-                <div className="option"><h5>Apply your new rule</h5><ul><li>Tax returns over $10,000 need partner approval.</li></ul></div>
+                <div className="option"><h5>Adjust your new rule</h5><ul><li>Accountants can send tax returns up to $5,000 without approval.</li></ul></div>
+                <div className="option"><h5>Change the existing rule</h5><ul><li>Tax returns over $10,000 need partner approval.</li></ul></div>
               </div>
             </div>
           </div>

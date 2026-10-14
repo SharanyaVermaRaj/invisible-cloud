@@ -168,3 +168,36 @@ def test_spa_routes(client):
     assert client.get("/api/nope").status_code == 404
     assert client.get("/app/documents").status_code == 200
     assert client.get("/../etc/passwd").status_code == 404
+
+
+def test_clients_dont_learn_hidden_document_names(client):
+    dana = client.get("/api/state", headers={"X-Acting-As": "dana"}).json()
+    assert "globex_statement" not in dana["names"]
+    assert "acme_w2" in dana["names"]
+    assert client.get("/api/history", headers={"X-Acting-As": "dana"}).status_code == 403
+    r = client.get("/api/can", params={"person": "leo", "action": "read", "resource": "bluebird_ledger"},
+                   headers={"X-Acting-As": "dana"})
+    assert r.status_code == 403
+
+
+def test_absurd_amounts_and_ids_are_rejected_cleanly(client):
+    r = client.post("/api/documents", data={"client_service": "acme_tax", "kind": "tax_return", "amount": "1e400"},
+                    files={"file": ("a.pdf", b"%PDF", "application/pdf")})
+    assert r.status_code == 422 and "Amount" in r.json()["detail"]
+    assert client.get("/api/state").status_code == 200
+    assert client.post("/api/history/99999999999999999999/undo").status_code == 422
+
+
+def test_reset_deletes_the_old_workspace(client, engine):
+    from sqlalchemy import func, select
+    from sqlalchemy.orm import Session
+    from app.models import Organization
+    client.post("/api/workspace/reset")
+    with Session(engine) as s:
+        assert s.scalar(select(func.count(Organization.id))) == 1
+
+
+def test_clients_dont_see_internal_approval_status(client):
+    client.post("/api/documents/acme_tax_return/send", headers={"X-Acting-As": "john"})
+    dana = client.get("/api/state", headers={"X-Acting-As": "dana"}).json()
+    assert all("delivery" not in d for d in dana["documents"])

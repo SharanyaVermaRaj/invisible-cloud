@@ -65,3 +65,19 @@ def test_schema_rejects_unknown_rule_type():
 def test_schema_rejects_bad_keys():
     with pytest.raises(ValidationError):
         proposal("x", {"op": "remove_person", "key": "Robert'); DROP TABLE people;--"})
+
+
+def test_firm_always_keeps_a_partner(session, firm):
+    with pytest.raises(ChangeError, match="at least one partner"):
+        apply_proposal(session, firm, proposal("Elena left", {"op": "remove_person", "key": "elena"}))
+    with pytest.raises(ChangeError, match="at least one partner"):
+        apply_proposal(session, firm, proposal(
+            "Elena is an accountant now",
+            {"op": "unrelate", "subject": "elena", "relation": "member_of", "object": "partner"}))
+
+
+@pytest.mark.parametrize("amount", [float("inf"), float("nan"), 1e400, -5, 5e12])
+def test_amounts_must_be_sensible(amount):
+    from app.schemas import DocumentData
+    with pytest.raises(ValidationError):
+        DocumentData(kind="tax_return", amount=amount)

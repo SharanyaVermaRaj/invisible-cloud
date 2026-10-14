@@ -1,13 +1,16 @@
 """HTTP API used by the web app. Everything is scoped to the visitor's own workspace."""
 from datetime import timedelta
 
-from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, Request, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Path, Query, Request, Response, UploadFile
+from pydantic import ValidationError
 from fastapi.responses import JSONResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.authz import CompanyGraph
-from app.changes import ChangeError, ConflictError, apply_proposal, preview_proposal, preview_undo, undo_change
+from app.changes import (
+    ChangeError, ConflictError, apply_proposal, delete_org_rows, preview_proposal, preview_undo, undo_change,
+)
 from app.config import settings
 from app.db import get_session
 from app.documents import (
@@ -97,7 +100,11 @@ def state(request: Request, response: Response, s: Session = Depends(get_session
 
 
 @router.post("/workspace/reset")
-def reset(response: Response, s: Session = Depends(get_session)):
+def reset(request: Request, response: Response, s: Session = Depends(get_session)):
+    old = find_workspace(s, request.cookies.get(COOKIE))
+    if old is not None:
+        delete_org_rows(s, old.id)
+        s.commit()
     org = create_demo_workspace(s)
     _set_cookie(response, org)
     return {"ok": True}
@@ -150,8 +157,12 @@ def apply(body: ChangeProposal, org: Organization = Depends(current_org), person
 
 # ---------- history ----------
 
+ChangeId = Path(ge=1, le=2_000_000_000)
+
+
 @router.get("/history")
-def history(org: Organization = Depends(current_org), s: Session = Depends(get_session)):
+def history(org: Organization = Depends(current_org), person: str = Depends(admin),
+            s: Session = Depends(get_session)):
     g = CompanyGraph(s, org.id)
     rows = s.scalars(select(Change).where(Change.org_id == org.id).order_by(Change.id.desc())).all()
     return [{
@@ -163,13 +174,13 @@ def history(org: Organization = Depends(current_org), s: Session = Depends(get_s
 
 
 @router.post("/history/{change_id}/undo/preview")
-def undo_preview(change_id: int, org: Organization = Depends(current_org), person: str = Depends(admin),
+def undo_preview(change_id: int = ChangeId, org: Organization = Depends(current_org), person: str = Depends(admin),
                  s: Session = Depends(get_session)):
     return _errors(lambda: preview_undo(s, org.id, change_id))
 
 
 @router.post("/history/{change_id}/undo")
-def undo(change_id: int, org: Organization = Depends(current_org), person: str = Depends(admin),
+def undo(change_id: int = ChangeId, org: Organization = Depends(current_org), person: str = Depends(admin),
          s: Session = Depends(get_session)):
     def run():
         change = undo_change(s, org.id, change_id, person)
@@ -187,8 +198,8 @@ async def upload(file: UploadFile = File(...), title: str = Form(""), client_ser
     content = await file.read(settings.max_upload_mb * 1024 * 1024 + 1)
     try:
         value = float(amount.replace(",", "").replace("$", "")) if amount.strip() else None
-    except ValueError:
-        raise HTTPException(422, "Amount must be a number.")
+    except (ValueError, OverflowError):
+        raise HTTPException(422, "Amount must be a number, like 7200.")
 
     def run():
         key, change = upload_document(
@@ -198,10 +209,11 @@ async def upload(file: UploadFile = File(...), title: str = Form(""), client_ser
         return {"key": key, "change": change.id}
     try:
         return _errors(run)
-    except HTTPException:
-        raise
-    except ValueError as e:  # invalid document kind
-        raise HTTPException(422, f"Invalid document details: {e}")
+    except ValidationError as e:
+        fields = {str(err["loc"][0]) for err in e.errors() if err.get("loc")}
+        if "amount" in fields:
+            raise HTTPException(422, "Amount must be a positive number under $1,000,000,000.")
+        raise HTTPException(422, "Choose a kind of document from the list.")
 
 
 @router.get("/documents/{key}/file")
@@ -225,7 +237,7 @@ def send(key: str, org: Organization = Depends(current_org), person: str = Depen
 
 
 @router.post("/approvals/{delivery_id}/{decision}")
-def decide(delivery_id: int, decision: str, body: DecisionRequest | None = None,
+def decide(decision: str, delivery_id: int = Path(ge=1, le=2_000_000_000), body: DecisionRequest | None = None,
            org: Organization = Depends(current_org), person: str = Depends(me),
            s: Session = Depends(get_session)):
     if decision not in ("approve", "reject"):
@@ -237,5 +249,8 @@ def decide(delivery_id: int, decision: str, body: DecisionRequest | None = None,
 
 @router.get("/can")
 def check(person: str, action: str, resource: str, org: Organization = Depends(current_org),
-          s: Session = Depends(get_session)):
-    return CompanyGraph(s, org.id).check(person, action, resource).to_dict()
+          me_key: str = Depends(me), s: Session = Depends(get_session)):
+    graph = CompanyGraph(s, org.id)
+    if person != me_key and ADMIN_ROLE not in graph.roles_of(me_key):
+        raise HTTPException(403, "You can only check your own access.")
+    return graph.check(person, action, resource).to_dict()

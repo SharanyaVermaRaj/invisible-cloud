@@ -242,7 +242,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .avatar.sm { width: 24px; height: 24px; font-size: 10px; }
 .avatars { display: flex; }
 .avatars .avatar { box-shadow: 0 0 0 2px var(--surface); }
-.avatars .avatar + .avatar { margin-left: -6px; }
+.avatars .avatar + .avatar { margin-left: -3px; }
 
 .page-head { margin-bottom: 28px; }
 .page-head h2 { font-size: var(--s4); letter-spacing: -0.02em; margin: 0 0 6px; line-height: 1.15; }
@@ -462,7 +462,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
   .result-head, .result-body, .result-foot { padding-left: 18px; padding-right: 18px; }
   .diff-person { grid-template-columns: 1fr; gap: 8px; }
   .person-row { grid-template-columns: 1fr; gap: 10px; }
-  .persona-btn .who { display: none; }
+  .persona-btn .who small { display: none; }
+  .persona-btn .who b { display: inline-block; max-width: 110px; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; }
   .hmap tbody th span { display: none; }
 }
 @media (prefers-reduced-motion: reduce) {

@@ -71,7 +71,12 @@ export function AppShell() {
         <div className="empty" style={{ maxWidth: 440 }}>
           <h3>The demo couldn't load</h3>
           <p>{error}</p>
-          <button className="btn btn-primary" onClick={() => refresh()}>Try again</button>
+          <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
+            <button className="btn" onClick={() => refresh()}>Try again</button>
+            <button className="btn btn-primary" onClick={async () => {
+              try { await api.reset(); setPersona(null); await refresh(); } catch { /* error stays visible */ }
+            }}>Start a fresh demo</button>
+          </div>
         </div>
       </div>
     );
@@ -125,7 +130,7 @@ export function AppShell() {
                 <Icon name="info" />
                 <p>
                   You're viewing the firm as <b>{me.name}</b>{me.title ? `, ${me.title}` : ""}. You see only what the
-                  firm's rules allow. Switch back to Elena (top right) to make changes.
+                  firm's rules allow. Switch to a partner (top right) to make changes.
                 </p>
               </div>
             )}

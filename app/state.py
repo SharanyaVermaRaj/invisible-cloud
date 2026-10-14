@@ -57,7 +57,7 @@ def build_state(session: Session, org: Organization, me: str, ai_enabled: bool) 
             "approval": g.approval_needed(me, doc.key) if mine["send"]["allowed"] else None,
         }
         d = deliveries.get(doc.key)
-        if d:
+        if d and (is_admin or mine["edit"]["allowed"]):
             item["delivery"] = {"id": d.id, "status": d.status, "requested_by": d.requested_by,
                                 "decided_by": d.decided_by, "created_at": _iso(d.created_at),
                                 "decided_at": _iso(d.decided_at)}
@@ -90,7 +90,9 @@ def build_state(session: Session, org: Organization, me: str, ai_enabled: bool) 
         "me": {"key": me, "name": me_person.name if me_person else me,
                "title": me_person.title if me_person else "", "roles": sorted(my_roles),
                "is_admin": is_admin},
-        "names": g.names,
+        "names": {k: v for k, v in g.names.items()
+                  if is_admin or g.entities.get(k) is None or g.entities[k].type != "document"
+                  or k in {doc["key"] for doc in documents}},
         "people": people,
         "roles": [{"key": e.key, "name": e.name} for e in g.of_type("role")],
         "clients": [{"key": e.key, "name": e.name,

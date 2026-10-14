@@ -4,6 +4,9 @@ import { timeAgo, useToast } from "../ui";
 import { ProposalCard } from "./AskView";
 import { useApp } from "./context";
 
+const docsTouched = (list: { person: string; resource: string }[]) =>
+  new Set(list.map(c => `${c.person}:${c.resource}`)).size;
+
 export function HistoryView() {
   const { refresh } = useApp();
   const toast = useToast();
@@ -67,8 +70,8 @@ export function HistoryView() {
                   </div>
                   {!isSystem && (
                     <div className="counts">
-                      {c.diff.gained.length > 0 && <span className="badge gain">{c.diff.gained.length} access gained</span>}
-                      {c.diff.lost.length > 0 && <span className="badge loss">{c.diff.lost.length} access removed</span>}
+                      {c.diff.gained.length > 0 && <span className="badge gain">Access added to {docsTouched(c.diff.gained)} document{docsTouched(c.diff.gained) === 1 ? "" : "s"}</span>}
+                      {c.diff.lost.length > 0 && <span className="badge loss">Access removed from {docsTouched(c.diff.lost)} document{docsTouched(c.diff.lost) === 1 ? "" : "s"}</span>}
                       {c.diff.gained.length + c.diff.lost.length === 0 && <span className="badge">No access changed</span>}
                     </div>
                   )}

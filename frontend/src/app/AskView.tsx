@@ -188,7 +188,7 @@ function ResolutionOption({ r, busy, onApply, onDiscard }: {
       <ul>{r.changes.map((c, i) => <li key={i}>{c}</li>)}</ul>
       {r.proposal && moves > 0 && (
         <span className="badge" style={{ alignSelf: "flex-start" }}>
-          {r.gained.length} access gained, {r.lost.length} lost
+          {new Set(r.gained.map(c => c.person + c.resource)).size} access added, {new Set(r.lost.map(c => c.person + c.resource)).size} removed
         </span>
       )}
       <button className="btn btn-sm btn-primary" disabled={busy}

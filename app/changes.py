@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from app.authz import CompanyGraph
 from app.models import Change, Entity, Organization, Person, Relationship, Rule
 from app.rules import Conflict, describe_rule, find_conflicts, fix_for, parse_rule
+from app.seed import ADMIN_ROLE
 from app.schemas import (
     RELATIONS, AccessRule, AddEntity, AddPerson, ApprovalRule, ChangeProposal, DocumentData,
     ExemptionRule, Relate, RemoveEntity, RemovePerson, RemoveRule, RestrictionRule, SetRule, Unrelate,
@@ -98,6 +99,14 @@ def _describe_relation(session, org_id, subject, relation, obj, removing: bool) 
     if relation == "belongs_to":
         return f"Take {s} out of {o}" if removing else f"File {s} under {o}"
     return f"{subject} {'no longer ' if removing else ''}{relation} {obj}"
+
+
+def _check_version(op, current: Rule | None) -> None:
+    if op.if_version is None:
+        return
+    actual = current.version if current else 0
+    if actual != op.if_version:
+        raise ChangeError(f"the rule “{op.key}” has been changed since")
 
 
 # ---------- applying one operation ----------
@@ -197,13 +206,15 @@ def _apply_op(session: Session, org_id: int, op, names: dict[str, str]) -> tuple
             if _kind(session, org_id, role) != "role":
                 raise ChangeError(f"rule “{op.key}” refers to unknown role “{role}”")
         old = _active_rule(session, org_id, op.key)
+        _check_version(op, old)
         version = 1
         if old:
             old.active = False
             version = old.version + 1
-            inverse = [{"op": "set_rule", "key": op.key, "text": old.text, "definition": old.definition}]
+            inverse = [{"op": "set_rule", "key": op.key, "text": old.text, "definition": old.definition,
+                        "if_version": version}]
         else:
-            inverse = [{"op": "remove_rule", "key": op.key}]
+            inverse = [{"op": "remove_rule", "key": op.key, "if_version": version}]
         session.add(Rule(org_id=org_id, key=op.key, version=version, text=op.text,
                          definition=op.definition.model_dump(), active=True))
         verb = "New rule" if version == 1 else f"Update rule (v{version})"
@@ -213,9 +224,11 @@ def _apply_op(session: Session, org_id: int, op, names: dict[str, str]) -> tuple
         old = _active_rule(session, org_id, op.key)
         if not old:
             raise ChangeError(f"no active rule “{op.key}”")
+        _check_version(op, old)
         old.active = False
         return (f"Remove rule: {describe_rule(old.definition, names)}",
-                [{"op": "set_rule", "key": op.key, "text": old.text, "definition": old.definition}])
+                [{"op": "set_rule", "key": op.key, "text": old.text, "definition": old.definition,
+                  "if_version": 0}])
 
     raise ChangeError(f"unsupported operation {op!r}")  # pragma: no cover
 
@@ -265,6 +278,9 @@ def _run(session: Session, org_id: int, proposal: ChangeProposal) -> RunResult:
         session.flush()
 
     after_graph = CompanyGraph(session, org_id)
+    if not after_graph.subjects(ADMIN_ROLE, "member_of"):
+        raise ChangeError(f"the firm needs at least one {after_graph.name(ADMIN_ROLE).lower()}, "
+                          f"and this change would leave none")
     after = after_graph.matrix()
     names.update(after_graph.names)
     conflicts = find_conflicts(after_graph.rules, touched, names)
@@ -320,13 +336,14 @@ def _resolutions(session, org_id, proposal, result: RunResult) -> list[dict]:
                     defs.pop(key, None)
                 else:
                     defs[key] = defn
-        first = result.conflicts[0]
-        new_side = "a" if first.rule_a in touched else "b"
-        both_new = first.rule_a in touched and first.rule_b in touched
-        if both_new:
-            label = "Keep the first rule" if favour == "a" else "Keep the second rule"
+        edits_existing = any(k not in touched for k in edits)
+        new_removed = any(d is None and k in touched for k, d in edits.items())
+        if edits_existing:
+            label = "Change the existing rule"
+        elif new_removed or not edits:
+            label = "Keep the existing rule"
         else:
-            label = "Apply your new rule" if favour == new_side else "Keep the existing rule"
+            label = "Adjust your new rule"
 
         candidate = _with_rule_edits(proposal, edits, existing, result.names)
         if candidate is None:

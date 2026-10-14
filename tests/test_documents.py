@@ -87,3 +87,10 @@ def test_upload_rejects_bad_types(session, firm):
     with pytest.raises(Exception, match="file type"):
         upload_document(session, firm, "elena", title="x", client_service="acme_payroll", kind="other",
                         amount=None, filename="x.exe", mime="application/x-msdownload", content=b"MZ")
+
+
+def test_tax_return_without_amount_needs_approval(session, firm):
+    key, _ = upload_document(session, firm, "john", title="Acme extension", client_service="acme_tax",
+                             kind="tax_return", amount=None, filename="x.pdf", mime="application/pdf",
+                             content=b"%PDF x")
+    assert send_document(session, firm, "john", key).status == "pending"

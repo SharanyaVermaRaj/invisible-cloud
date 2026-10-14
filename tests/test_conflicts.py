@@ -15,7 +15,7 @@ def test_exemption_above_approval_threshold_is_a_conflict(session, firm):
     assert c["rules"] == ["tax_return_approval", "accountant_tax_exemption"]
     assert "$5,000 and $10,000" in c["message"]
     labels = {r["id"]: r["label"] for r in p["resolutions"]}
-    assert labels == {"a": "Keep the existing rule", "b": "Apply your new rule"}
+    assert labels == {"a": "Adjust your new rule", "b": "Change the existing rule"}
 
 
 def test_conflicting_change_cannot_be_applied(session, firm):
@@ -49,8 +49,8 @@ def test_grant_vs_restriction(session, firm):
     p = preview_proposal(session, firm, ACCOUNTANTS_SHARE)
     assert [c["kind"] for c in p["conflicts"]] == ["grant_vs_restriction"]
     by_id = {r["id"]: r for r in p["resolutions"]}
-    # Apply the new rule: accountants are added to the restriction.
-    assert by_id["a"]["label"] == "Apply your new rule"
+    # Let the grant win: accountants are added to the existing restriction.
+    assert by_id["a"]["label"] == "Change the existing rule"
     assert by_id["a"]["changes"] == ["Only partners and accountants can share documents."]
     # Keep the restriction: the new grant has nothing left, so it isn't created at all.
     assert by_id["b"]["label"] == "Keep the existing rule"
@@ -72,7 +72,7 @@ def test_restriction_added_later_conflicts_with_existing_grant(session, firm):
          "definition": {"type": "restriction", "action": "edit", "roles": ["partner"]}},
     ))
     assert p["conflicts"][0]["rules"] == ["accountants_assigned", "partners_edit"]
-    keep_new = next(r for r in p["resolutions"] if r["label"] == "Apply your new rule")
+    keep_new = next(r for r in p["resolutions"] if r["label"] == "Change the existing rule")
     assert keep_new["changes"] == [
         "Accountants can read documents for the client services they're assigned to."]
 
@@ -96,3 +96,13 @@ def test_exemption_within_threshold_is_fine(session, firm):
          "definition": {"type": "exemption", "role": "accountant", "doc_kind": "tax_return", "max_amount": 4000}},
     ))
     assert p["conflicts"] == []
+
+
+def test_restriction_added_later_can_be_adjusted(session, firm):
+    p = preview_proposal(session, firm, proposal(
+        "Only partners can edit documents.",
+        {"op": "set_rule", "key": "partners_edit", "text": "Only partners can edit documents.",
+         "definition": {"type": "restriction", "action": "edit", "roles": ["partner"]}},
+    ))
+    adjust = next(r for r in p["resolutions"] if r["label"] == "Adjust your new rule")
+    assert adjust["changes"] == ["Only partners and accountants can edit documents."]
