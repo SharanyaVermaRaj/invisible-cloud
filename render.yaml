@@ -3,7 +3,7 @@ services:
   - type: web
     name: invisible-cloud
     runtime: docker
-    plan: starter            # always on, so the demo never takes a minute to wake up
+    plan: free
     healthCheckPath: /api/health
     envVars:
       - key: DATABASE_URL
@@ -21,4 +21,4 @@ services:
 
 databases:
   - name: invisible-cloud-db
-    plan: basic-256mb
+    plan: free
