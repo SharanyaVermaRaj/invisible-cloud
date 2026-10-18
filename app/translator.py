@@ -1,6 +1,6 @@
 """Natural language -> ChangeProposal (or a question, or an answer).
 
-The model never touches the database. It must call exactly one tool:
+The model never touches the database. It must call exactly one tool (asked for in the prompt; tool_choice is "auto"):
   propose_change     -> a ChangeProposal, validated by Pydantic and dry-run
   ask_clarification  -> a question back to the owner
   answer             -> a reply to a question, grounded in the computed access table
@@ -8,6 +8,7 @@ If a proposal fails validation, the error goes back to the model once so it
 can correct itself. Nothing is applied here; the owner still confirms.
 """
 import json
+import logging
 from dataclasses import dataclass
 
 from pydantic import ValidationError
@@ -20,11 +21,12 @@ from app.rules import KIND_LABELS, describe_rule
 from app.schemas import ACTIONS, RELATIONS, AddEntity, ChangeProposal
 
 MAX_ATTEMPTS = 2
+log = logging.getLogger("invisible_cloud.translator")
 
 SYSTEM_PROMPT = """You are the translation layer of a cloud for small businesses. You turn the \
 owner's plain-English statements into structured changes to their company model.
 
-You never change anything yourself. Call exactly one tool:
+You never change anything yourself. Always respond by calling exactly one tool, never with plain text:
 - propose_change: the owner described a change to how the firm works.
 - answer: the owner asked a question. Answer only from <company_model>, using its \
 "access" table for who can do what. Be brief and specific.
@@ -160,16 +162,29 @@ def translate(session: Session, org_id: int, text: str, client=None) -> Translat
     }]
 
     last_error = None
-    for _ in range(MAX_ATTEMPTS):
+    for attempt in range(MAX_ATTEMPTS):
         try:
+            # tool_choice "auto": some models don't accept forcing a tool, so the system prompt
+            # asks for exactly one tool call and plain-text replies are handled below.
             response = client.messages.create(
                 model=settings.model, max_tokens=4000, system=_system(), tools=TOOLS,
-                tool_choice={"type": "any"}, messages=messages,
+                tool_choice={"type": "auto"}, messages=messages,
             )
         except Exception as e:  # network, auth, rate limits
+            log.warning("AI request failed: %s: %s", type(e).__name__, e)
             raise TranslationError(f"The AI service didn't respond ({type(e).__name__}). Try again.") from e
         call = next((b for b in response.content if b.type == "tool_use"), None)
         if call is None:
+            reply = " ".join(b.text for b in response.content if b.type == "text").strip()
+            if attempt + 1 < MAX_ATTEMPTS:
+                messages += [
+                    {"role": "assistant", "content": response.content},
+                    {"role": "user", "content": "Respond by calling exactly one of the tools: "
+                                                "propose_change, answer or ask_clarification."},
+                ]
+                continue
+            if reply:  # still no tool: show the text as an answer, never as a change
+                return Translation(kind="answer", text=reply)
             raise TranslationError("The AI didn't return a usable answer. Try rephrasing.")
 
         if call.name == "ask_clarification":

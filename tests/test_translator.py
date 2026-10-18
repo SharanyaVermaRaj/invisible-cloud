@@ -40,7 +40,7 @@ def test_model_gets_company_model_and_must_use_a_tool(session, firm):
     llm = FakeLLM(tool_call("propose_change", HANDOVER))
     translate(session, firm, "anything", client=llm)
     req = llm.requests[0]
-    assert req["tool_choice"] == {"type": "any"}
+    assert req["tool_choice"] == {"type": "auto"}
     assert {t["name"] for t in req["tools"]} == {"propose_change", "ask_clarification", "answer"}
     assert '"acme_payroll"' in req["messages"][0]["content"]
     assert "Owner says: anything" in req["messages"][0]["content"]
@@ -111,3 +111,16 @@ def test_tool_schema_is_plain_json_with_required_discriminators():
                     if b["properties"]["op"]["const"] == "set_rule")
     for rule in set_rule["properties"]["definition"]["oneOf"]:
         assert rule["required"][0] == "type"
+
+
+def text_reply(text):
+    return SimpleNamespace(content=[SimpleNamespace(type="text", text=text)])
+
+
+def test_plain_text_reply_is_retried_then_used_as_answer(session, firm):
+    llm = FakeLLM(text_reply("Sure!"), tool_call("propose_change", HANDOVER))
+    assert translate(session, firm, "x", client=llm).kind == "proposal"
+    assert "exactly one of the tools" in llm.requests[1]["messages"][-1]["content"]
+    llm = FakeLLM(text_reply("Elena and Mike."), text_reply("Elena and Mike."))
+    t = translate(session, firm, "Who can see it?", client=llm)
+    assert (t.kind, t.text) == ("answer", "Elena and Mike.")
